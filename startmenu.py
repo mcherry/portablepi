@@ -105,6 +105,8 @@ def screenSaver():
 			
 			ssaverTime = 0
 			return
+		
+		sleep(MICRO_DELAY)
 
 # read button states. False is pressed, True is not pressed
 def readButtons():
@@ -132,8 +134,6 @@ def printMenu(menu):
 	
 	if ((CurrentMenuItem + 1) < MenuItems):
 		lcdPrint(2, 1, menu[CurrentMenuItem + 1])
-		
-	sleep(SHORT_DELAY)
 
 # determine how many pages any given menu is
 def PageCount(MenuItems):
@@ -263,8 +263,6 @@ def infoMenu():
 		
 		lcdPrint(0, 0, line0, True)
 		lcdPrint(0, 1, line1)
-		
-		sleep(SHORT_DELAY)
 		
 		while (buttonClick == 0):
 			readButtons()
