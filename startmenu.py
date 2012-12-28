@@ -10,7 +10,7 @@ from Adafruit_CharLCD import Adafruit_CharLCD
 from subprocess import * 
 from time import sleep, strftime
 from datetime import datetime
-import thread, signal, sys, os, gc
+import thread, signal, sys, os, gc, nmap
 import netifaces as ni
 import RPi.GPIO as GPIO
 
@@ -41,6 +41,16 @@ buttons = {'btnUp': True, 'btnDown': True, 'btnBack': True, 'btnSelect': True}
 # create lcd object
 lcd = Adafruit_CharLCD()
 
+# convert an IP address string into an array of octets
+def IPToArray(ip):
+	newip = ip.split('.')
+	
+	return [int(newip[0]), int(newip[1]), int(newip[2]), int(newip[3])]
+	
+# convert an array of octets into a string ip address
+def ArrayToIP(iparray):
+	return str(iparray[0]) + '.' + str(iparray[1]) + '.' + str(iparray[2]) + '.' + str(iparray[3])
+
 # start a background thread to blink LED 'delay' number of times
 def ledBlink(ledpin, number, delay=SHORT_DELAY):
 	thread.start_new_thread(ledBlinkThread, (ledpin, number, delay))
@@ -70,6 +80,97 @@ def signal_handler(signal, frame):
         sleep(MICRO_DELAY)
         
 	sys.exit(0)
+
+# present a method to input an IP address
+# if isNetmask == False then you cant select 255 for any given octet
+def ipInput(ip, label, isNetmask=False):
+	octetPos = 0
+	netMaskMax = 254
+	octetMin = 0
+	
+	iparray = IPToArray(ip)
+	
+	if (isNetmask == True):
+		netMaskMax = 255
+		
+	lcdPrint(0, 0, label, True)
+	lcdPrint(0, 1, str(iparray[0]).zfill(3) + '.' +  str(iparray[1]).zfill(3) + '.' +  str(iparray[2]).zfill(3) + '.' +  str(iparray[3]).zfill(3))
+	
+	lcd.setCursor(2, 1)
+	lcd.cursor()
+	lcd.blink()
+	
+	sleep(MICRO_DELAY)
+	
+	while 1:
+		readButtons()
+		
+		if (buttons['btnUp'] == False):
+			if (iparray[octetPos] < netMaskMax):
+				iparray[octetPos] += 1
+			else:
+				if (octetPos == 0):
+					iparray[octetPos] = 1
+				else:
+					iparray[octetPos] = 0
+			
+			lcdPrint((octetPos+2*(octetPos+1)+octetPos)-2, 1, str(iparray[octetPos]).zfill(3))
+			
+			sleep(MICRO_DELAY)
+			
+		if (buttons['btnDown'] == False):
+			if (octetPos == 0):
+				octetMin = 1
+			else:
+				octetMin = 0
+				
+			if (iparray[octetPos] > octetMin):
+				iparray[octetPos] -= 1
+			else:
+				iparray[octetPos] = netMaskMax
+			
+			lcdPrint((octetPos+2*(octetPos+1)+octetPos)-2, 1, str(iparray[octetPos]).zfill(3))
+			
+			sleep(MICRO_DELAY)
+			
+		if (buttons['btnSelect'] == False):
+			if (octetPos == 3):
+				lcd.noBlink()
+				lcd.noCursor()
+				
+				return ArrayToIP(iparray)
+				
+			if (octetPos < 4):
+				if (octetPos != 3):
+					octetPos += 1
+					
+				lcd.setCursor(octetPos+2*(octetPos+1)+octetPos, 1)
+				sleep(SHORT_DELAY)
+				
+		if (buttons['btnBack'] == False):
+			if (octetPos == 0):
+				iparray[0] = 0
+				
+				lcd.noBlink()
+				lcd.noCursor()
+				
+				return 0
+			
+			octetPos -= 1
+			
+			lcd.setCursor(octetPos+2*(octetPos+1)+octetPos, 1)
+			
+			sleep(SHORT_DELAY)
+
+def portScanner():
+	addr = 0
+	portCount = 0
+	
+	ip = ipInput("192.168.187.84", "IP Address")
+	if (ip == 0):
+		return
+	else:
+		print IPToArray(ip)
 
 # wrapper to move lcd PROMPT and print a string
 def lcdPrint(column, row, message, clear=False):
@@ -303,7 +404,7 @@ def systemMenu():
 	global ssaverTime
 	
 	ssaverTime = 0
-	SystemMenu = ['Restart', 'Reboot', 'Shutdown']
+	SystemMenu = ['Reload', 'Reboot', 'Shutdown']
 	
 	printMenu(SystemMenu)
 	
@@ -392,6 +493,12 @@ def mainMenu():
 				infoMenu()
 			
 				sleep(SHORT_DELAY)
+				printMenu(MainMenu)
+				
+			elif (CurrentMenuItem == 3):
+				portScanner()
+				
+				sleep(MICRO_DELAY)
 				printMenu(MainMenu)
 				
 			elif (CurrentMenuItem == 4):

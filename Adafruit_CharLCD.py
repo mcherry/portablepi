@@ -147,7 +147,7 @@ class Adafruit_CharLCD:
 	self.write4bits(self.LCD_DISPLAYCONTROL | self.displaycontrol)
 
 
-    def noBlink(self):
+    def blink(self):
 	""" Turn on and off the blinking cursor """
 
 	self.displaycontrol &= ~self.LCD_BLINKON
@@ -157,7 +157,7 @@ class Adafruit_CharLCD:
     def noBlink(self):
 	""" Turn on and off the blinking cursor """
 
-	self.displaycontrol &= ~self.LCD_BLINKON
+	self.displaycontrol &= ~self.LCD_BLINKOFF
 	self.write4bits(self.LCD_DISPLAYCONTROL | self.displaycontrol)
 
 
