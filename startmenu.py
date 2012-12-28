@@ -134,6 +134,8 @@ def printMenu(menu):
 	
 	if ((CurrentMenuItem + 1) < MenuItems):
 		lcdPrint(2, 1, menu[CurrentMenuItem + 1])
+		
+	sleep(MICRO_DELAY)
 
 # determine how many pages any given menu is
 def PageCount(MenuItems):
