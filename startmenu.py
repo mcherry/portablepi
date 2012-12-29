@@ -186,6 +186,18 @@ def runShell(cmd):
         output = p.communicate()[0]
         
         return output.rstrip()
+        
+def checkScreenSaver(menuName=['','']):
+	global ssaverTime
+	
+	# increment idle delay
+	ssaverTime += MICRO_DELAY
+		
+	# if weve been idle for 10 minutes, start screen saver
+	if (ssaverTime > ssaverTimeout):
+		ssaverTime = 0
+		screenSaver()
+		printMenu(menuName)
 
 # clear lcd and turn off ledBacklight then wait for input to "wake up"
 def screenSaver():
@@ -217,7 +229,7 @@ def readButtons():
 	buttons['btnSelect'] = GPIO.input(btnSelect)
 
 # print an array of menu items
-def printMenu(menu):
+def printMenu(menu, noPrompt=False):
 	global CursorPosition
 	global CurrentPage
 	global CurrentMenuItem
@@ -228,13 +240,19 @@ def printMenu(menu):
 	CurrentPage = 0
 	CurrentMenuItem = 0
 	
+	itemOffset = 2
+	if (noPrompt == True):
+		itemOffset = 0
+	
 	lcd.clear()
 	
-	lcdPrint(0, CursorPosition, PROMPT)
-	lcdPrint(2, 0, menu[CurrentMenuItem])
+	if (noPrompt == False):
+		lcdPrint(0, CursorPosition, PROMPT)
+		
+	lcdPrint(itemOffset, 0, menu[CurrentMenuItem])
 	
 	if ((CurrentMenuItem + 1) < MenuItems):
-		lcdPrint(2, 1, menu[CurrentMenuItem + 1])
+		lcdPrint(itemOffset, 1, menu[CurrentMenuItem + 1])
 		
 	sleep(MICRO_DELAY)
 
@@ -251,7 +269,7 @@ def PageCount(MenuItems):
 	return pages
 
 # move PROMPT to the next menu item or page
-def CursorNext(menu):
+def CursorNext(menu, noPrompt=False):
 	global CursorPosition
 	global CurrentPage
 	global CurrentMenuItem
@@ -259,12 +277,17 @@ def CursorNext(menu):
 	
 	ssaverTime = 0
 	
+	itemOffset = 2
+	if (noPrompt == True):
+		itemOffset = 0
+	
 	MenuItems = len(menu)
 	
 	if (CursorPosition == 0):
 		if ((CurrentMenuItem + 1) < MenuItems):
-			lcdPrint(0, 0, " ")
-			lcdPrint(0, 1, PROMPT)
+			if (noPrompt == False):
+				lcdPrint(0, 0, " ")
+				lcdPrint(0, 1, PROMPT)
 			
 			CursorPosition += 1
 			CurrentMenuItem += 1
@@ -277,16 +300,18 @@ def CursorNext(menu):
 			
 			CursorPosition = 0
 			
-			lcdPrint(0, CursorPosition, PROMPT)
-			lcdPrint(2, 0, menu[CurrentMenuItem])
+			if (noPrompt == False):
+				lcdPrint(0, CursorPosition, PROMPT)
+			
+			lcdPrint(itemOffset, 0, menu[CurrentMenuItem])
 			
 			if ((CurrentMenuItem + 1) < MenuItems):
-				lcdPrint(2, 1, menu[CurrentMenuItem + 1])
-				
+				lcdPrint(itemOffset, 1, menu[CurrentMenuItem + 1])
+	
 	sleep(SHORT_DELAY)
 
 # move PROMPT to rpevious menu item or page
-def CursorPrevious(menu):
+def CursorPrevious(menu, noPrompt=False):
 	global CursorPosition
 	global CurrentPage
 	global CurrentMenuItem
@@ -294,12 +319,18 @@ def CursorPrevious(menu):
 	
 	ssaverTime = 0
 	
+	itemOffset = 2
+	if (noPrompt == True):
+		itemOffset = 0
+	
 	MenuItems = len(menu)
 	
 	if (CursorPosition == 1):
 		if (CurrentMenuItem > 0):
-			lcdPrint(0, 1, " ")
-			lcdPrint(0, 0, PROMPT)
+			if (noPrompt == False):
+				lcdPrint(0, 1, " ")
+				lcdPrint(0, 0, PROMPT)
+			
 			
 			CursorPosition -= 1
 			CurrentMenuItem -= 1
@@ -312,11 +343,12 @@ def CursorPrevious(menu):
 			
 			CursorPosition = 1
 			
-			lcdPrint(2, 0, menu[CurrentMenuItem - 1])
-			lcdPrint(2, 1, menu[CurrentMenuItem])
+			lcdPrint(itemOffset, 0, menu[CurrentMenuItem - 1])
+			lcdPrint(itemOffset, 1, menu[CurrentMenuItem])
 			
-			lcdPrint(0, 1, PROMPT)
-	
+			if (noPrompt == False):
+				lcdPrint(0, 1, PROMPT)
+		
 	sleep(SHORT_DELAY)
 
 # display information and cycle through pages
@@ -325,79 +357,116 @@ def infoMenu():
 	
 	ssaverTime = 0
 	
-	menuPosition = 0
-	buttonClick = 0
-	menuItems = 5
+	gateway = runShell("route -n | grep 'UG[ \t]' | awk '{print $2}'")
+	dns_server = runShell("grep nameserver /etc/resolv.conf|head -n1|awk '{print $2}'")
+	total_mem = runShell("grep MemTotal /proc/meminfo|awk '{print $2}'")
+	free_mem = runShell("grep MemFree /proc/meminfo|awk '{print $2}'")
 	
-	line0 = ''
-	line1 = ''
+	InfoMenu = []
 	
-	networkinfo = ni.ifaddresses('eth0')
+	for nic in ni.interfaces():
+		if (nic != "lo"):
+			InfoMenu.append(nic)
+			InfoMenu.append(ni.ifaddresses(nic)[2][0]['addr'])
+			
+			InfoMenu.append('Subnet Mask')
+			InfoMenu.append(ni.ifaddresses(nic)[2][0]['netmask'])
+	
+	InfoMenu.append('Gateway')
+	InfoMenu.append(gateway)
+	
+	InfoMenu.append('DNS')
+	InfoMenu.append(dns_server)
+	
+	printMenu(InfoMenu, True)
+	sleep(MICRO_DELAY)
 	
 	while 1:
-		if (buttonClick == 1):
-			buttonClick = 0
+		readButtons()
+
+		# up button
+		if ( buttons['btnUp'] == False ):
+			CursorPrevious(InfoMenu, True)
+			CursorPrevious(InfoMenu, True)
+			
 	
-		if (menuPosition == 0):
-			line0 = 'IP Address'
-			line1 = networkinfo[2][0]['addr']
-			
-		if (menuPosition == 1):
-			gateway = runShell("route -n | grep 'UG[ \t]' | awk '{print $2}'")
-			
-			line0 = 'Gateway'
-			line1 = gateway
-			
-		if (menuPosition == 2):
-			dns_server = runShell("grep nameserver /etc/resolv.conf|head -n1|awk '{print $2}'")
-			line0 = 'DNS'
-			line1 = dns_server
-			
-		if (menuPosition == 3):
-			line0 = 'Subnet Mask'
-			line1 = networkinfo[2][0]['netmask']
-			
-		if (menuPosition == 4):
-			total_mem = runShell("grep MemTotal /proc/meminfo|awk '{print $2}'")
-			free_mem = runShell("grep MemFree /proc/meminfo|awk '{print $2}'")
-			
-			line0 = 'Free Memory'
-			line1 = free_mem + '/' + total_mem + 'KB' 
+		# down button
+		if ( buttons['btnDown'] == False ):
+			CursorNext(InfoMenu, True)
+			CursorNext(InfoMenu, True)
 		
-		lcdPrint(0, 0, line0, True)
-		lcdPrint(0, 1, line1)
-		
-		while (buttonClick == 0):
-			readButtons()
+		# back button (unused in main menu)
+		if ( buttons['btnBack'] == False ):
+			return
 			
-			if (buttons['btnDown'] == False):
-				ssaverTime = 0
-				
-				if (menuPosition < (menuItems - 1)):
-					menuPosition += 1
-					buttonClick = 1
-					
-			if (buttons['btnUp'] == False):
-				ssaverTime = 0
-				
-				if (menuPosition > 0):
-					menuPosition -= 1
-					buttonClick = 1
+		checkScreenSaver()
+		sleep(MICRO_DELAY)
 			
-			if (buttons['btnBack'] == False):
-				ssaverTime = 0
-				
-				return
-				
-			# increment idle delay
-			ssaverTime += MICRO_DELAY
+def networkMenu():
+	global ssaverTime
+	global networkAnimation
+	
+	ssaverTime = 0
+	NetworkMenu = ['Start Wired', 'Stop Wired', 'Start Wireless', 'Stop Wireless']
+	
+	printMenu(NetworkMenu)
+	sleep(MICRO_DELAY)
+	
+	while 1:
+		readButtons()
+
+		# up button
+		if ( buttons['btnUp'] == False ):
+			CursorPrevious(NetworkMenu)
+	
+		# down button
+		if ( buttons['btnDown'] == False ):
+			CursorNext(NetworkMenu)
 		
-			# if weve been idle for 10 minutes, start screen saver
-			if (ssaverTime > ssaverTimeout):
-				ssaverTime = 0
-				screenSaver()
+		# back button (unused in main menu)
+		if ( buttons['btnBack'] == False ):
+			return
+			
+		# select button
+		if ( buttons['btnSelect'] == False ):
+			lcd.clear()
+			
+			if (CurrentMenuItem == 0):
+				lcdPrint(0, 0, 'Starting')
+				lcdPrint(0, 1, 'wired network')
 				
-			sleep(MICRO_DELAY)
+				nothing = runShell('ifconfig eth0 up')
+				nothing = runShell('dhclient eth0')
+				
+			if (CurrentMenuItem == 1):
+				lcdPrint(0, 0, 'Stopping')
+				lcdPrint(0, 1, 'wired network')
+				
+				nothing = runShell('ifconfig eth0 down')
+				nothing = runShell('ifconfig eth0 0.0.0.0')
+			
+			if (CurrentMenuItem == 2):
+				lcdPrint(0, 0, 'Starting')
+				lcdPrint(0, 1, 'wireless network')
+				
+				nothing = runShell('modprobe r8712u')
+				nothing = runShell('/usr/local/bin/startwifi.sh')
+			
+			if (CurrentMenuItem == 3):
+				lcdPrint(0, 0, 'Stopping')
+				lcdPrint(0, 1, 'wireless network')
+				
+				nothing = runShell('ifconfig wlan0 down')
+				nothing = runShell('ifconfig wlan0 0.0.0.0')
+				nothing = runShell('rmmod r8712u')
+			
+			sleep(SHORT_DELAY)
+			return
+				
+		checkScreenSaver(NetworkMenu)
+			
+		sleep(MICRO_DELAY)
+	
 
 # display system menu
 def systemMenu():
@@ -407,6 +476,7 @@ def systemMenu():
 	SystemMenu = ['Reload', 'Reboot', 'Shutdown']
 	
 	printMenu(SystemMenu)
+	sleep(MICRO_DELAY)
 	
 	while 1:
 		readButtons()
@@ -429,7 +499,8 @@ def systemMenu():
 			
 			if (CurrentMenuItem == 0):
 				lcd.clear()
-				lcdPrint(0, 0, 'Restarting...')
+				lcdPrint(0, 0, 'Reloading')
+				lcdPrint(0, 1, 'menu...')
 				
 				sys.exit(0)
 			
@@ -445,14 +516,7 @@ def systemMenu():
 				
 				nothing = runShell("shutdown -h now")
 		
-		# increment idle delay
-		ssaverTime += MICRO_DELAY
-		
-		# if weve been idle for 10 minutes, start screen saver
-		if (ssaverTime > ssaverTimeout):
-			ssaverTime = 0
-			screenSaver()
-			printMenu(SystemMenu)
+		checkScreenSaver(SystemMenu)
 			
 		sleep(MICRO_DELAY)
 
@@ -463,9 +527,10 @@ def mainMenu():
 	ledBlink(ledStatus, 5)
 	
 	ssaverTime = 0
-	MainMenu = ['Information', 'Diagnostics', 'Host Discovery', 'Port Scanner', 'System', 'About']
+	MainMenu = ['Information', 'Diagnostics', 'Tools', 'Network', 'System', 'About']
 	
 	printMenu(MainMenu)
+	sleep(MICRO_DELAY)
 
 	while 1:
 		readButtons()
@@ -478,13 +543,6 @@ def mainMenu():
 		if ( buttons['btnDown'] == False ):
 			CursorNext(MainMenu)
 
-		# back button (unused in main menu)
-		# if ( buttons['btnBack'] == False ):
-		#	lcd.clear()
-		#	lcd.message('Button 3')
-		#	sleep(LONG_DELAY)
-		#	printMenu(MainMenu)
-	
 		# select button
 		if ( buttons['btnSelect'] == False ):
 			lcd.clear()
@@ -496,7 +554,7 @@ def mainMenu():
 				printMenu(MainMenu)
 				
 			elif (CurrentMenuItem == 3):
-				portScanner()
+				networkMenu()
 				
 				sleep(MICRO_DELAY)
 				printMenu(MainMenu)
@@ -510,14 +568,7 @@ def mainMenu():
 			else:
 				printMenu(MainMenu)
 
-		# increment idle delay
-		ssaverTime += MICRO_DELAY
-		
-		# if weve been idle for 10 minutes, start screen saver
-		if (ssaverTime > ssaverTimeout):
-			ssaverTime = 0
-			screenSaver()
-			printMenu(MainMenu)
+		checkScreenSaver(MainMenu)
 		
 		sleep(MICRO_DELAY)
 
@@ -525,7 +576,7 @@ def mainMenu():
 def setup():
 	signal.signal(signal.SIGINT, signal_handler)
 	
-	#GPIO.setwarnings(False)
+	GPIO.setwarnings(False)
 	GPIO.setmode(GPIO.BCM)
 	GPIO.setup(btnUp, GPIO.IN)
 	GPIO.setup(btnDown, GPIO.IN)
