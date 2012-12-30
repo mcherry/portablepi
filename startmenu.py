@@ -14,6 +14,8 @@ import thread, signal, sys, os, gc, nmap
 import netifaces as ni
 import RPi.GPIO as GPIO
 
+GPIO.setwarnings(False)
+
 LONG_DELAY = 1.75
 MEDIUM_DELAY = .5
 SHORT_DELAY = .25
@@ -65,7 +67,6 @@ def ledBlinkThread(ledpin, number, delay=SHORT_DELAY):
 		GPIO.output(ledpin, GPIO.LOW)
 		sleep(delay)
 		
-	
 	GPIO.output(ledpin, GPIO.LOW)
 
 # handle SIGINT
@@ -366,11 +367,14 @@ def infoMenu():
 	
 	for nic in ni.interfaces():
 		if (nic != "lo"):
-			InfoMenu.append(nic)
-			InfoMenu.append(ni.ifaddresses(nic)[2][0]['addr'])
+			item = ni.ifaddresses(nic).get(2, 0)
 			
-			InfoMenu.append('Subnet Mask')
-			InfoMenu.append(ni.ifaddresses(nic)[2][0]['netmask'])
+			if (item != 0):
+				InfoMenu.append(nic)
+				InfoMenu.append(item[0]['addr'])
+			
+				InfoMenu.append('Subnet Mask')
+				InfoMenu.append(item[0]['netmask'])
 	
 	InfoMenu.append('Gateway')
 	InfoMenu.append(gateway)
@@ -576,7 +580,6 @@ def mainMenu():
 def setup():
 	signal.signal(signal.SIGINT, signal_handler)
 	
-	GPIO.setwarnings(False)
 	GPIO.setmode(GPIO.BCM)
 	GPIO.setup(btnUp, GPIO.IN)
 	GPIO.setup(btnDown, GPIO.IN)
