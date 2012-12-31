@@ -10,8 +10,9 @@ from Adafruit_CharLCD import Adafruit_CharLCD
 from subprocess import * 
 from time import sleep, strftime
 from datetime import datetime
-import thread, signal, sys, os, gc, nmap
+import thread, signal, sys, os, gc, statvfs
 import netifaces as ni
+import nmap
 import RPi.GPIO as GPIO
 
 GPIO.setwarnings(False)
@@ -29,7 +30,8 @@ btnDown = 15
 btnBack = 8
 btnSelect = 18
 ledBacklight = 7
-ledStatus = 1
+ledStatus1 = 1
+lesStatus2 = 11
 
 CursorPosition = 0
 CurrentPage = 0
@@ -63,6 +65,7 @@ def ledBlinkThread(ledpin, number, delay=SHORT_DELAY):
 	
 	for num in range(0,number):
 		GPIO.output(ledpin, GPIO.HIGH)
+		
 		sleep(delay)
 		GPIO.output(ledpin, GPIO.LOW)
 		sleep(delay)
@@ -77,10 +80,21 @@ def signal_handler(signal, frame):
 	GPIO.output(ledBacklight, True)
         sleep(MICRO_DELAY)
         
-	GPIO.output(ledStatus, False)
+	GPIO.output(ledStatus1, False)
+        sleep(MICRO_DELAY)
+        
+        GPIO.output(lesStatus2, GPIO.LOW)
         sleep(MICRO_DELAY)
         
 	sys.exit(0)
+	
+def free_bytes(path): 
+	stats = os.statvfs(path) 
+	return stats[statvfs.F_BSIZE] * stats[statvfs.F_BFREE] 
+
+def avail_bytes(path): 
+	stats = os.statvfs(path) 
+	return stats[statvfs.F_BSIZE] * stats[statvfs.F_BAVAIL]
 
 # present a method to input an IP address
 # if isNetmask == False then you cant select 255 for any given octet
@@ -188,7 +202,7 @@ def runShell(cmd):
         
         return output.rstrip()
         
-def checkScreenSaver(menuName=['','']):
+def checkScreenSaver(menuName):
 	global ssaverTime
 	
 	# increment idle delay
@@ -270,7 +284,7 @@ def PageCount(MenuItems):
 	return pages
 
 # move PROMPT to the next menu item or page
-def CursorNext(menu, noPrompt=False):
+def CursorNext(menu, noPrompt=False, noDelay=False):
 	global CursorPosition
 	global CurrentPage
 	global CurrentMenuItem
@@ -309,10 +323,11 @@ def CursorNext(menu, noPrompt=False):
 			if ((CurrentMenuItem + 1) < MenuItems):
 				lcdPrint(itemOffset, 1, menu[CurrentMenuItem + 1])
 	
-	sleep(SHORT_DELAY)
+	if (noDelay == False):
+		sleep(SHORT_DELAY)
 
 # move PROMPT to rpevious menu item or page
-def CursorPrevious(menu, noPrompt=False):
+def CursorPrevious(menu, noPrompt=False, noDelay=False):
 	global CursorPosition
 	global CurrentPage
 	global CurrentMenuItem
@@ -349,8 +364,9 @@ def CursorPrevious(menu, noPrompt=False):
 			
 			if (noPrompt == False):
 				lcdPrint(0, 1, PROMPT)
-		
-	sleep(SHORT_DELAY)
+	
+	if (noDelay == False):
+		sleep(SHORT_DELAY)
 
 # display information and cycle through pages
 def infoMenu():
@@ -360,8 +376,8 @@ def infoMenu():
 	
 	gateway = runShell("route -n | grep 'UG[ \t]' | awk '{print $2}'")
 	dns_server = runShell("grep nameserver /etc/resolv.conf|head -n1|awk '{print $2}'")
-	total_mem = runShell("grep MemTotal /proc/meminfo|awk '{print $2}'")
-	free_mem = runShell("grep MemFree /proc/meminfo|awk '{print $2}'")
+	total_mem = int(runShell("grep MemTotal /proc/meminfo|awk '{print $2}'")) / 1024
+	free_mem = int(runShell("grep MemFree /proc/meminfo|awk '{print $2}'")) / 1024
 	
 	InfoMenu = []
 	
@@ -382,7 +398,14 @@ def infoMenu():
 	InfoMenu.append('DNS')
 	InfoMenu.append(dns_server)
 	
+	InfoMenu.append('Free Memory')
+	InfoMenu.append(str(free_mem)+'/'+str(total_mem)+' MB')
+	
+	InfoMenu.append('Free Space on /')
+	InfoMenu.append(str(format(avail_bytes('/') / 1024, ',d'))+' MB')
+	
 	printMenu(InfoMenu, True)
+	
 	sleep(MICRO_DELAY)
 	
 	while 1:
@@ -390,20 +413,20 @@ def infoMenu():
 
 		# up button
 		if ( buttons['btnUp'] == False ):
-			CursorPrevious(InfoMenu, True)
+			CursorPrevious(InfoMenu, True, True)
 			CursorPrevious(InfoMenu, True)
 			
 	
 		# down button
 		if ( buttons['btnDown'] == False ):
-			CursorNext(InfoMenu, True)
+			CursorNext(InfoMenu, True, True)
 			CursorNext(InfoMenu, True)
 		
 		# back button (unused in main menu)
 		if ( buttons['btnBack'] == False ):
 			return
 			
-		checkScreenSaver()
+		checkScreenSaver(InfoMenu)
 		sleep(MICRO_DELAY)
 			
 def networkMenu():
@@ -523,12 +546,12 @@ def systemMenu():
 		checkScreenSaver(SystemMenu)
 			
 		sleep(MICRO_DELAY)
-
+		
 # display main menu and respond to a selection
 def mainMenu():
 	global ssaverTime
 	
-	ledBlink(ledStatus, 5)
+	ledBlink(ledStatus1, 5)
 	
 	ssaverTime = 0
 	MainMenu = ['Information', 'Diagnostics', 'Tools', 'Network', 'System', 'About']
@@ -586,10 +609,12 @@ def setup():
 	GPIO.setup(btnBack, GPIO.IN)
 	GPIO.setup(btnSelect, GPIO.IN)
 	GPIO.setup(ledBacklight, GPIO.OUT)
-	GPIO.setup(ledStatus, GPIO.OUT)
+	GPIO.setup(ledStatus1, GPIO.OUT)
+	GPIO.setup(lesStatus2, GPIO.OUT)
 	
 	GPIO.output(ledBacklight, False)
-	GPIO.output(ledStatus, GPIO.LOW)
+	GPIO.output(ledStatus1, GPIO.LOW)
+	GPIO.output(lesStatus2, GPIO.LOW)
 	
 	lcd.begin(16,2)
 
